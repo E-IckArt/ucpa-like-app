@@ -1,0 +1,90 @@
+services:
+    ucpa-like-app:
+        build:
+            context: ./vendor/laravel/sail/runtimes/8.3
+            dockerfile: Dockerfile
+            args:
+                WWWGROUP: '${WWWGROUP}'
+        image: sail-8.3/app
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        ports:
+            - '${APP_PORT:-80}:80'
+            - '${VITE_PORT:-5173}:${VITE_PORT:-5173}'
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+            XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
+            XDEBUG_CONFIG: '${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}'
+            IGNITION_LOCAL_SITES_PATH: '${PWD}'
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - ucpa-like-app-network
+        depends_on:
+            - pgsql
+            - mailpit
+            - pgadmin
+        develop:
+            watch:
+                -   action: sync
+                    path: ./src
+                    target: /var/www/html
+
+    pgsql:
+        image: 'postgres:15'
+        ports:
+            - '${FORWARD_DB_PORT:-5432}:5432'
+        environment:
+            PGPASSWORD: '${DB_PASSWORD}'
+            POSTGRES_DB: '${DB_DATABASE}'
+            POSTGRES_USER: '${DB_USERNAME}'
+            POSTGRES_PASSWORD: '${DB_PASSWORD}'
+        volumes:
+            - 'ucpa-like-app-pgsql:/var/lib/postgresql/data'
+            - './vendor/laravel/sail/database/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
+        networks:
+            - ucpa-like-app-network
+        healthcheck:
+            test:
+                - CMD
+                - pg_isready
+                - '-q'
+                - '-d'
+                - '${DB_DATABASE}'
+                - '-U'
+                - '${DB_USERNAME}'
+            retries: 3
+            timeout: 5s
+
+    pgadmin:
+        image: dpage/pgadmin4:latest
+        restart: always
+        ports:
+            - '5052:80'
+        depends_on:
+            - pgsql
+        environment:
+            PGADMIN_DEFAULT_EMAIL: '${DB_EMAIL}'
+            PGADMIN_DEFAULT_PASSWORD: '${DB_PASSWORD}'
+        volumes:
+            - ucpa-like-app-pgadmin:/var/lib/pgadmin
+        networks:
+            - ucpa-like-app-network
+
+    mailpit:
+        image: 'axllent/mailpit:latest'
+        ports:
+            - '${FORWARD_MAILPIT_PORT:-1025}:1025'
+            - '${FORWARD_MAILPIT_DASHBOARD_PORT:-8025}:8025'
+        networks:
+            - ucpa-like-app-network
+
+networks:
+    ucpa-like-app-network:
+        driver: bridge
+volumes:
+    ucpa-like-app-pgsql:
+        driver: local
+    ucpa-like-app-pgadmin:
+        driver: local
